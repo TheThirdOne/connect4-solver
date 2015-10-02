@@ -8,15 +8,22 @@ type Board struct {
 }
 
 func (self *Board) Drop(index int8) *Board {
+
 	if len(self.board[index]) > 5 {
 		return nil
 	}
-	copy := *self
-	copy.board[index] = append(copy.board[index], copy.Player)
-	copy.Player = -copy.Player
-	return &copy
+	asdf := *self
+	for i, _ := range asdf.board {
+		asdf.board[i] = make([]int8, len(self.board[i]))
+		copy(asdf.board[i], self.board[i])
+	}
+	asdf.board[index] = append(asdf.board[index], asdf.Player)
+	asdf.Player = -asdf.Player
+	return &asdf
 }
 
+//player bit + length of column (3 bits)*7 + moves (1 or 0) (1 bit)
+//max length 1 + 21 + 42 = 64 therefore, no hash collisions
 func (self *Board) Hash() int64 {
 	var out, tmp int64
 	for _, col := range self.board {
@@ -57,6 +64,7 @@ func (self *Board) win() int8 {
 		}
 	}
 
+	//horizontal
 	for i := 0; i < 6; i++ {
 		tmp = 0
 		for k := 0; k < 6; k++ {
@@ -101,6 +109,7 @@ func (self *Board) win() int8 {
 			}
 		}
 	}
+	//top right to bottom left
 	starting = [6][2]int8{{6, 3}, {6, 4}, {6, 5}, {5, 5}, {4, 5}, {3, 5}}
 	for i := 0; i < 6; i++ {
 		index = starting[i]
@@ -136,36 +145,62 @@ func (self *Board) win() int8 {
 	return -2
 }
 
-func (self *Board) Evaluate() int8{
-	if value, exists := data.Get(self.Hash()); exists{
+func (self *Board) Evaluate() int8 {
+	if value, exists := data.Get(self.Hash()); exists {
 		return value
 	}
-	if winner := self.win(); winner != -2{
-		return winner
-	}
-	var canTie bool
-	for i := 0; i < 7; i++{
+
+	//checks if the next move is a win
+	temp := make([]*Board, 0, 7)
+
+	for i := 0; i < 7; i++ {
 		tmp := self.Drop(int8(i))
+
+		//if move is invalid
 		if tmp == nil {
 			continue
 		}
+
+		//if there is a winner
+		if winner := tmp.win(); winner != -2 {
+			if winner == self.Player {
+				data.Set(tmp.Hash(), self.Player)
+				return self.Player
+			}
+			continue
+		}
+
+		//otherwise add it to the recursive check list
+		temp = append(temp, tmp)
+	}
+
+	//recursive check for next moves
+	canTie := false
+
+	for _, tmp := range temp {
 		score := tmp.Evaluate()
-		if score == self.Player{
-			data.Set(self.Hash(),self.Player)
+		//if there is a winnning move, take it
+		if score == self.Player {
+			data.Set(self.Hash(), self.Player)
 			return self.Player
 		}
-		if score == 0{
+		//mark if can tie
+		if score == 0 {
 			canTie = true
 		}
 	}
-	if canTie{
-		data.Set(self.Hash(),0)
+	//if can tie and cannot win, tie
+	if canTie {
+		data.Set(self.Hash(), 0)
 		return 0
 	}
-	data.Set(self.Hash(),-self.Player)
-	return -self.Player;
+
+	//the opponent wins
+	data.Set(self.Hash(), -self.Player)
+
+	return -self.Player
 }
-func Init(routines int) *Board{
-  data.Init(2)
-  return new(Board)
+func Init(routines int) *Board {
+	data.Init(2)
+	return new(Board)
 }
